@@ -55,9 +55,8 @@ Just run `claudio` with no arguments for a guided experience:
   ║     | |____| | (_| | |_| | (_| | | (_) |        ║
   ║      \_____|_|\__,_|\__,_|\__,_|_|\___/         ║
   ║                                                 ║
-  ║  Universal source bundler for LLM consumption  ║
-  ║  Version 1.0.0                                 ║
-  ║  no relation to claude                         ║
+  ║  Universal source bundler for LLM consumption   ║
+  ║  no relation to claude                          ║
   ╚═════════════════════════════════════════════════╝
 
   1. 📦  Generate   - Bundle source files for LLM consumption
@@ -183,4 +182,4 @@ void main() {
 
 ## License
 
-MIT
+GNUv3
