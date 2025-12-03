@@ -83,7 +83,7 @@ class UserPrompt {
   /// Show progress during file processing
   static void showProgress(int current, int total, String currentFile) {
     final percent = (current / total * 100).toStringAsFixed(0);
-    final bar = _makeProgressBar(current, total, 30);
+    final bar = makeProgressBar(current, total, 30);
 
     // Use carriage return to overwrite the line
     stdout.write('\r[$bar] $percent% ($current/$total) $currentFile'.padRight(100));
@@ -94,7 +94,8 @@ class UserPrompt {
     }
   }
 
-  static String _makeProgressBar(int current, int total, int width) {
+  /// Create a progress bar string
+  static String makeProgressBar(int current, int total, int width) {
     final filled = (current / total * width).round();
     final empty = width - filled;
     return '\u2588' * filled + '\u2591' * empty;

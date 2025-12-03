@@ -3,6 +3,7 @@ import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
 import 'language_config.dart';
+import 'source_folder.dart';
 
 /// Output format for generated files
 enum OutputFormat {
@@ -46,6 +47,13 @@ class GenConfig {
   /// Enable verbose output
   final bool verbose;
 
+  /// Multiple source folders (for multi-folder mode)
+  /// When non-empty, this overrides sourceDir
+  final List<SourceFolder> sourceFolders;
+
+  /// Enable "all files" mode - scans all supported file types
+  final bool allFilesMode;
+
   const GenConfig({
     required this.sourceDir,
     this.outputPrefix = 'CLAUDIO',
@@ -58,6 +66,8 @@ class GenConfig {
     this.extraRootFiles = const [],
     this.outputFormatName = 'text',
     this.verbose = false,
+    this.sourceFolders = const [],
+    this.allFilesMode = false,
   });
 
   /// Get the ProjectType enum value
@@ -80,11 +90,56 @@ class GenConfig {
     return LanguageConfig.forType(type);
   }
 
+  /// Check if using multi-folder mode
+  bool get isMultiFolderMode => sourceFolders.isNotEmpty;
+
+  /// Get enabled source folders
+  List<SourceFolder> get enabledSourceFolders =>
+      sourceFolders.where((SourceFolder f) => f.enabled).toList();
+
   /// Get effective file extensions (custom or from language config)
+  /// In allFilesMode, returns all known extensions
   List<String> get effectiveExtensions {
+    if (allFilesMode) {
+      return allSupportedExtensions;
+    }
     if (extensions.isNotEmpty) return extensions;
     return languageConfig.extensions;
   }
+
+  /// All file extensions supported by any language
+  static const List<String> allSupportedExtensions = [
+    // Dart
+    '.dart',
+    // Python
+    '.py', '.pyw', '.pyi',
+    // JavaScript/TypeScript
+    '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts',
+    // Go
+    '.go',
+    // Rust
+    '.rs',
+    // Java/Kotlin
+    '.java', '.kt', '.kts',
+    // Swift
+    '.swift',
+    // C/C++
+    '.c', '.cpp', '.cc', '.h', '.hpp',
+    // C#
+    '.cs',
+    // Ruby
+    '.rb', '.rake', '.gemspec',
+    // PHP
+    '.php', '.phtml',
+    // Web
+    '.html', '.htm', '.css', '.scss', '.sass', '.less', '.vue', '.svelte',
+    // Config/Data
+    '.json', '.yaml', '.yml', '.toml', '.xml',
+    // Shell
+    '.sh', '.bash', '.zsh', '.ps1', '.bat', '.cmd',
+    // Other
+    '.sql', '.graphql', '.gql', '.proto', '.md', '.txt',
+  ];
 
   /// Get effective ignore patterns (merged with language defaults)
   List<String> get effectiveIgnorePatterns {
@@ -177,6 +232,11 @@ class GenConfig {
           const [],
       outputFormatName: yaml['output_format'] as String? ?? 'text',
       verbose: yaml['verbose'] as bool? ?? false,
+      sourceFolders: (yaml['source_folders'] as List<dynamic>?)
+              ?.map((dynamic e) => SourceFolder.fromYaml(e as Map<dynamic, dynamic>))
+              .toList() ??
+          const [],
+      allFilesMode: yaml['all_files_mode'] as bool? ?? false,
     );
   }
 
@@ -242,6 +302,27 @@ class GenConfig {
       }
     }
 
+    if (sourceFolders.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('# Multiple source folders (each generates separate output files)');
+      buffer.writeln('source_folders:');
+      for (final folder in sourceFolders) {
+        buffer.writeln('  - path: "${folder.path}"');
+        if (folder.suffix != null && folder.suffix!.isNotEmpty) {
+          buffer.writeln('    suffix: "${folder.suffix}"');
+        }
+        if (!folder.enabled) {
+          buffer.writeln('    enabled: false');
+        }
+      }
+    }
+
+    if (allFilesMode) {
+      buffer.writeln();
+      buffer.writeln('# Scan all supported file types regardless of project type');
+      buffer.writeln('all_files_mode: true');
+    }
+
     return buffer.toString();
   }
 
@@ -265,6 +346,8 @@ class GenConfig {
     List<String>? extraRootFiles,
     String? outputFormatName,
     bool? verbose,
+    List<SourceFolder>? sourceFolders,
+    bool? allFilesMode,
   }) {
     return GenConfig(
       sourceDir: sourceDir ?? this.sourceDir,
@@ -278,6 +361,8 @@ class GenConfig {
       extraRootFiles: extraRootFiles ?? this.extraRootFiles,
       outputFormatName: outputFormatName ?? this.outputFormatName,
       verbose: verbose ?? this.verbose,
+      sourceFolders: sourceFolders ?? this.sourceFolders,
+      allFilesMode: allFilesMode ?? this.allFilesMode,
     );
   }
 

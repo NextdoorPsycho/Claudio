@@ -4,8 +4,10 @@ import 'package:path/path.dart' as p;
 
 import '../models/gen_config.dart';
 import '../models/language_config.dart';
+import '../models/source_folder.dart';
 import '../services/file_processor.dart';
 import '../services/file_watcher.dart';
+import '../services/multi_source_processor.dart';
 import '../services/output_generator.dart';
 import '../services/profile_manager.dart';
 import '../models/gen_stats.dart';
@@ -25,6 +27,12 @@ class InteractiveWizard {
     switch (action) {
       case WizardAction.generate:
         await _runGenerateWizard();
+        break;
+      case WizardAction.multiFolder:
+        await _runMultiFolderWizard();
+        break;
+      case WizardAction.allFiles:
+        await _runAllFilesWizard();
         break;
       case WizardAction.watch:
         await _runWatchWizard();
@@ -80,6 +88,8 @@ class InteractiveWizard {
 
     const List<_MenuOption> options = [
       _MenuOption('Generate', 'Bundle source files for LLM consumption', '📦'),
+      _MenuOption('Multi-Folder', 'Process multiple folders with separate outputs', '📂'),
+      _MenuOption('All Files', 'Scan ALL supported file types in project', '🌐'),
       _MenuOption('Watch', 'Auto-regenerate when files change', '👁'),
       _MenuOption('Init', 'Create a .claudio.yaml config file', '⚙'),
       _MenuOption('Profiles', 'Manage saved configuration profiles', '💾'),
@@ -278,6 +288,177 @@ class InteractiveWizard {
     }
 
     return OutputFormat.values[selection - 1];
+  }
+
+  /// Run the multi-folder wizard
+  static Future<void> _runMultiFolderWizard() async {
+    print('\n${_bold('━━━ Multi-Folder Mode ━━━')}\n');
+    print('Generate separate output files for each source folder.');
+    print('Each folder gets its own output prefix (e.g., CLAUDIO_dev).\n');
+
+    final String workingDir = Directory.current.path;
+
+    // Detect available folders
+    print('${_cyan('Scanning for folders...')}\n');
+    final List<DetectedFolder> detected = await FolderDetector.detectFolders(workingDir);
+
+    if (detected.isEmpty) {
+      print('${_yellow('No folders with source files found.')}\n');
+      return;
+    }
+
+    // Show detected folders
+    print('${_bold('Detected folders:')}\n');
+    for (int i = 0; i < detected.length; i++) {
+      final DetectedFolder folder = detected[i];
+      final String typeIcon = folder.type == FolderType.source ? '📁' : (folder.type == FolderType.extra ? '📂' : '📄');
+      final String suggested = folder.suggested ? ' ${_green('(recommended)')}' : '';
+      print('  ${(i + 1).toString().padLeft(2)}. $typeIcon ${folder.path}$suggested');
+    }
+
+    print('');
+    print('${_dim('Enter folder numbers separated by commas (e.g., 1,3,5)')}\n');
+    stdout.write('${_cyan('→')} Select folders to include: ');
+
+    final String? input = stdin.readLineSync()?.trim();
+    if (input == null || input.isEmpty) {
+      print('${_yellow('No folders selected.')}\n');
+      return;
+    }
+
+    // Parse selections
+    final List<SourceFolder> selectedFolders = [];
+    final List<String> parts = input.split(',');
+
+    for (final String part in parts) {
+      final int? index = int.tryParse(part.trim());
+      if (index != null && index >= 1 && index <= detected.length) {
+        final DetectedFolder folder = detected[index - 1];
+        final String? suggestedSuffix = FolderDetector.getSuggestedSuffix(folder.path);
+
+        // Ask for suffix
+        print('');
+        final String suffix = await _askString(
+          'Output suffix for "${folder.path}"',
+          defaultValue: suggestedSuffix ?? folder.path,
+        );
+
+        selectedFolders.add(SourceFolder(
+          path: folder.path,
+          suffix: suffix.isEmpty ? null : suffix,
+        ));
+      }
+    }
+
+    if (selectedFolders.isEmpty) {
+      print('${_yellow('No valid folders selected.')}\n');
+      return;
+    }
+
+    // Show what will be generated
+    print('\n${_bold('━━━ Output Preview ━━━')}\n');
+    for (final SourceFolder folder in selectedFolders) {
+      final String prefix = folder.getOutputPrefix('CLAUDIO');
+      print('  📁 ${folder.path} → ${_cyan(prefix)}-001.txt, ${_cyan(prefix)}-002.txt, ...');
+    }
+
+    // Get other settings
+    print('');
+    final ProjectType detectedType = LanguageConfig.detectProjectType(workingDir);
+    final OutputFormat format = await _selectOutputFormat();
+    final bool removeComments = await _askYesNo('Remove comments from output?', defaultValue: true);
+
+    final GenConfig config = GenConfig(
+      sourceDir: selectedFolders.first.path,
+      outputPrefix: 'CLAUDIO',
+      projectTypeName: detectedType.name,
+      outputFormatName: format.name,
+      removeComments: removeComments,
+      sourceFolders: selectedFolders,
+    );
+
+    // Confirm
+    final bool proceed = await _askYesNo('\nProceed with generation?', defaultValue: true);
+    if (!proceed) {
+      print('\n${_yellow('Operation cancelled.')}\n');
+      return;
+    }
+
+    // Run multi-folder generation
+    print('\n${_bold('━━━ Generating... ━━━')}\n');
+    await _runMultiFolderGeneration(config, workingDir);
+  }
+
+  /// Run the all files wizard
+  static Future<void> _runAllFilesWizard() async {
+    print('\n${_bold('━━━ All Files Mode ━━━')}\n');
+    print('Scan and bundle ALL supported file types in your project.');
+    print('This ignores project type detection and includes everything.\n');
+
+    final String workingDir = Directory.current.path;
+
+    // Show what extensions will be included
+    print('${_bold('Supported extensions:')}\n');
+    print('  ${_dim(GenConfig.allSupportedExtensions.join(", "))}\n');
+
+    // Ask for source directory
+    final String sourceDir = await _askString('Source directory', defaultValue: '.');
+
+    // Get settings
+    final OutputFormat format = await _selectOutputFormat();
+    final bool removeComments = await _askYesNo('Remove comments from output?', defaultValue: true);
+
+    final GenConfig config = GenConfig(
+      sourceDir: sourceDir,
+      outputPrefix: 'CLAUDIO_ALL',
+      projectTypeName: 'generic',
+      outputFormatName: format.name,
+      removeComments: removeComments,
+      allFilesMode: true,
+    );
+
+    // Show preview
+    print('\n${_bold('━━━ Configuration Summary ━━━')}');
+    print('  Source:     $sourceDir');
+    print('  Mode:       ${_cyan('All Files')}');
+    print('  Extensions: ${_dim('ALL (${GenConfig.allSupportedExtensions.length} types)')}');
+    print('  Format:     ${format.name}');
+    print('  Comments:   ${removeComments ? "Removed" : "Kept"}');
+
+    // Confirm
+    final bool proceed = await _askYesNo('\nProceed with generation?', defaultValue: true);
+    if (!proceed) {
+      print('\n${_yellow('Operation cancelled.')}\n');
+      return;
+    }
+
+    // Run generation
+    print('\n${_bold('━━━ Generating... ━━━')}\n');
+    await _runGeneration(config, workingDir);
+  }
+
+  /// Run multi-folder generation
+  static Future<void> _runMultiFolderGeneration(GenConfig config, String workingDir) async {
+    final MultiSourceProcessor processor = MultiSourceProcessor(
+      config: config,
+      workingDir: workingDir,
+      outputDir: workingDir,
+    );
+
+    final MultiSourceResult result = await processor.processAllFolders(
+      onProgress: (String folder, int processed, int total) {
+        stdout.write('\r${_dim('[$folder]')} ${UserPrompt.makeProgressBar(processed, total, 20)} $processed/$total');
+      },
+      onFileCreated: (String folder, String path) {
+        if (config.verbose) {
+          print('  Created: ${p.basename(path)}');
+        }
+      },
+    );
+
+    print('');
+    success('Generation complete!');
+    result.printSummary();
   }
 
   /// Run the watch wizard
@@ -587,6 +768,8 @@ class InteractiveWizard {
 /// Wizard action options
 enum WizardAction {
   generate,
+  multiFolder,
+  allFiles,
   watch,
   init,
   profiles,
