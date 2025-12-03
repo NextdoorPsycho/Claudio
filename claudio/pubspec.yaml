@@ -17,12 +17,10 @@ version: 1.0.0
 #   claudio --help
 #
 # Uncomment this line to PREVENT publishing (keeps it private):
-publish_to: 'claudio'
-
 # Uncomment and fill these in before publishing:
-homepage: https://github.com/YOUR_USERNAME/claudio
-repository: https://github.com/YOUR_USERNAME/claudio
-issue_tracker: https://github.com/YOUR_USERNAME/claudio/issues
+homepage: https://github.com/NextdoorPsycho/Claudio
+repository: https://github.com/NextdoorPsycho/Claudio
+issue_tracker: https://github.com/NextdoorPsycho/Claudio/issues
 
 topics:
    - llm
