@@ -125,6 +125,13 @@ class InteractiveWizard {
     return selection - 1;
   }
 
+  /// Get the default output prefix (parent folder name, uppercase)
+  static String _getDefaultPrefix(String workingDir) {
+    final String folderName = p.basename(workingDir);
+    // Convert to uppercase and remove special chars
+    return folderName.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9_]'), '_');
+  }
+
   /// Run the generate wizard
   static Future<void> _runGenerateWizard() async {
     print('\n${_bold('━━━ Generate Source Bundle ━━━')}\n');
@@ -138,18 +145,25 @@ class InteractiveWizard {
     print('  ${_dim('Extensions: ${langConfig.extensions.join(", ")}')}');
     print('');
 
-    // Ask if they want to use detected settings or customize
+    // Always ask for output prefix
+    final String defaultPrefix = _getDefaultPrefix(workingDir);
+    final String outputPrefix = await _askString(
+      'Output file prefix',
+      defaultValue: defaultPrefix,
+    );
+
+    // Ask if they want to customize other settings
     final bool customize = await _askYesNo(
-      'Would you like to customize settings?',
+      'Customize other settings?',
       defaultValue: false,
     );
 
     GenConfig config;
 
     if (customize) {
-      config = await _customizeConfig(detectedType, workingDir);
+      config = await _customizeConfig(detectedType, workingDir, outputPrefix);
     } else {
-      config = GenConfig.withDefaults(workingDir);
+      config = GenConfig.withDefaults(workingDir).copyWith(outputPrefix: outputPrefix);
     }
 
     // Show preview
@@ -170,7 +184,7 @@ class InteractiveWizard {
   }
 
   /// Customize configuration interactively
-  static Future<GenConfig> _customizeConfig(ProjectType detectedType, String workingDir) async {
+  static Future<GenConfig> _customizeConfig(ProjectType detectedType, String workingDir, [String? providedPrefix]) async {
     print('\n${_bold('━━━ Configuration ━━━')}\n');
 
     // Project type
@@ -200,10 +214,10 @@ class InteractiveWizard {
       defaultValue: defaultSourceDir,
     );
 
-    // Output prefix
-    final String outputPrefix = await _askString(
+    // Output prefix (use provided or ask)
+    final String outputPrefix = providedPrefix ?? await _askString(
       'Output file prefix',
-      defaultValue: 'CLAUDIO',
+      defaultValue: _getDefaultPrefix(workingDir),
     );
 
     // Max size
@@ -355,10 +369,18 @@ class InteractiveWizard {
       return;
     }
 
+    // Ask for base output prefix
+    print('');
+    final String defaultPrefix = _getDefaultPrefix(workingDir);
+    final String basePrefix = await _askString(
+      'Base output prefix',
+      defaultValue: defaultPrefix,
+    );
+
     // Show what will be generated
     print('\n${_bold('━━━ Output Preview ━━━')}\n');
     for (final SourceFolder folder in selectedFolders) {
-      final String prefix = folder.getOutputPrefix('CLAUDIO');
+      final String prefix = folder.getOutputPrefix(basePrefix);
       print('  📁 ${folder.path} → ${_cyan(prefix)}-001.txt, ${_cyan(prefix)}-002.txt, ...');
     }
 
@@ -370,7 +392,7 @@ class InteractiveWizard {
 
     final GenConfig config = GenConfig(
       sourceDir: selectedFolders.first.path,
-      outputPrefix: 'CLAUDIO',
+      outputPrefix: basePrefix,
       projectTypeName: detectedType.name,
       outputFormatName: format.name,
       removeComments: removeComments,
@@ -401,6 +423,13 @@ class InteractiveWizard {
     print('${_bold('Supported extensions:')}\n');
     print('  ${_dim(GenConfig.allSupportedExtensions.join(", "))}\n');
 
+    // Ask for output prefix
+    final String defaultPrefix = '${_getDefaultPrefix(workingDir)}_ALL';
+    final String outputPrefix = await _askString(
+      'Output file prefix',
+      defaultValue: defaultPrefix,
+    );
+
     // Ask for source directory
     final String sourceDir = await _askString('Source directory', defaultValue: '.');
 
@@ -410,7 +439,7 @@ class InteractiveWizard {
 
     final GenConfig config = GenConfig(
       sourceDir: sourceDir,
-      outputPrefix: 'CLAUDIO_ALL',
+      outputPrefix: outputPrefix,
       projectTypeName: 'generic',
       outputFormatName: format.name,
       removeComments: removeComments,
@@ -419,6 +448,7 @@ class InteractiveWizard {
 
     // Show preview
     print('\n${_bold('━━━ Configuration Summary ━━━')}');
+    print('  Prefix:     $outputPrefix');
     print('  Source:     $sourceDir');
     print('  Mode:       ${_cyan('All Files')}');
     print('  Extensions: ${_dim('ALL (${GenConfig.allSupportedExtensions.length} types)')}');

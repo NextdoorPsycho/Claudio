@@ -24,6 +24,10 @@
 ### Changed
 - Made `UserPrompt.makeProgressBar()` public for reuse
 - Updated wizard to support 8 menu options (was 6)
+- **Output prefix now defaults to parent folder name** instead of hardcoded "CLAUDIO"
+  - Wizard always prompts for output prefix before generation
+  - Prefix is uppercased and sanitized (non-alphanumeric chars become underscores)
+  - Applies to all wizard flows: Generate, Multi-Folder, and All Files modes
 
 ## 1.1.0
 

@@ -1,6 +1,6 @@
 name: claudio
 description: "Command-line interface for claudio"
-version: 1.0.0
+version: 1.2.0
 
 # ============================================================================
 # PUBLISHING TO PUB.DEV
